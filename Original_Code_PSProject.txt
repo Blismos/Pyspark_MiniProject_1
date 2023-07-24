@@ -1,0 +1,88 @@
+from pyspark.sql import SparkSession
+from pyspark import SparkConf, SparkContext
+from pyspark.sql.types import *
+from pyspark.sql.functions import *
+
+spark = SparkSession.builder \
+ .master("local") \
+ .appName("helloworld") \
+ .config("spark.some.config.option", "some-value") \
+ .getOrCreate()
+
+StudentSchema = StructType ([
+      StructField("Gender", StringType(), True),
+      StructField("Race", StringType(), True),
+      StructField("ParentalEducation", StringType(), True),
+      StructField("lunch", StringType(), True),
+      StructField("TestPrep", StringType(), True),
+      StructField("MathScore", DoubleType(), True),
+      StructField("ReadingScore", DoubleType(), True),
+      StructField("WritingScore", DoubleType(), True)])
+
+
+StudentInfo = spark.read.format("csv").option("header", "true").schema(StudentSchema).\
+    load("/home/mahantha/knowledge/spark/training/projects/students-performance-in-exams/StudentsPerformance.csv")
+# StudentInfo.show()
+
+StudentInfoWithAllScores = StudentInfo.withColumn("sumofallscores", col("MathScore") + col("ReadingScore") + col("WritingScore"))
+# StudentInfoWithAllScores.show()
+
+
+#way1 : Applying single aggregate function on list of columns
+agg_cols=["MathScore", "ReadingScore", "WritingScore", "sumofallscores"]
+avg_agg_cols = [avg(i).alias(str(i)+'_avg') for i in agg_cols]
+dfgwiseperf=StudentInfoWithAllScores.groupBy("Gender").agg(*avg_agg_cols)
+dfgwiseperf.show()
+
+# way2 : Applying multiple aggregate functions on list of columns
+aggs=["MathScore", "ReadingScore", "WritingScore", "sumofallscores"]
+func_cols=[max,min,avg]
+agg_cols=[f(i) for f in func_cols for i in aggs]
+dfgwiseperf=StudentInfoWithAllScores.groupBy("Gender").agg(*agg_cols)
+dfgwiseperf.show()
+#
+#way3 : Applying multiple groupBy on Multiple aggregate functions on list of columns
+grouped_cols=['Gender','lunch']
+aggs=["MathScore", "ReadingScore", "WritingScore", "sumofallscores"]
+func_cols=[max,min,avg]
+agg_cols=[f(i) for f in func_cols for i in aggs]
+dfgandlunchwiseperf=StudentInfoWithAllScores.groupBy(*grouped_cols).agg(*agg_cols)
+dfgandlunchwiseperf.show()
+#
+#way4 : Applying multiple groupBy on Multiple aggregate functions on list of columns using alias
+grouped_cols=['Gender','lunch', 'ParentalEducation']
+aggs=["MathScore", "ReadingScore", "WritingScore", "sumofallscores"]
+func_cols=[[max,"max"],[min,"min"],[avg,"avg"]]
+agg_cols=[f[0](i).alias(f[1]+"_"+i) for f in func_cols for i in aggs]
+dfgandlunchwiseperf=StudentInfoWithAllScores.groupBy(*grouped_cols).agg(*agg_cols)
+dfgandlunchwiseperf.show()
+#
+# #way5
+aggs=["MathScore", "ReadingScore", "WritingScore", "sumofallscores"]
+exprs={x:'avg' for x in aggs}
+dfgwiseperf=StudentInfoWithAllScores.groupBy("Gender").agg(exprs)
+dfgwiseperf.show()
+
+# #way6
+aggs=["MathScore", "ReadingScore", "WritingScore", "sumofallscores"]
+dfgwiseperf=StudentInfoWithAllScores.groupBy("Gender").avg(*aggs)
+dfgwiseperf.show()
+#
+# Select columns of StudentInfo only from joinedDf
+# joinedDF=StudentInfo.join(dfgwiseperf,"gender")
+# joinedDF.show()
+# joinedDF.select(StudentInfo.columns).show()
+#
+#
+#Finding correlation between two columns
+correlationmathandreadingscore = StudentInfoWithAllScores.stat.corr("MathScore","ReadingScore")
+
+print(correlationmathandreadingscore)
+
+#
+#Finding correlation using function
+def get_corr(df,col1,col2):
+  return df.stat.corr(col1,col2)
+
+corr_mathScore_readingScore=get_corr(StudentInfoWithAllScores,"MathScore","ReadingScore")
+print(corr_mathScore_readingScore)
